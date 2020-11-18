@@ -9,7 +9,14 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "debug": "^4.2.0",
     "express": "^4.17.1",
-    "socket.io": "^2.3.0"
+    "magnet-uri": "^6.1.0",
+    "nodemon": "^2.0.6",
+    "peerflix": "^0.39.0",
+    "regedit": "^3.0.3",
+    "socket.io": "^2.3.0",
+    "subtitles-downloader": "^1.5.3",
+    "vlc-streamer": "0.0.7"
   }
 }
