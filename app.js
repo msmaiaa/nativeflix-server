@@ -7,20 +7,34 @@ const magnet = require("magnet-uri");
 const os = require("os");
 const path = require("path");
 const proc = require("child_process");
-const debug = require("debug")("vlc-streamer");
 const regedit = require('regedit')
 const {keyboard, Key, mouse} = require("@nut-tree/nut-js");
 const fkill = require('fkill');
 const windows = require('node-window-switcher');
 const config = require('./config.json');
+const OS = require('opensubtitles-api');
+const OpenSubtitles = new OS('Popcorn Time NodeJS');
+const request = require('superagent');
+const fs = require('fs');
+const admZip = require('adm-zip');
+
+let token = '';
+//just need the UserAgent, provided by popcorn time
+OpenSubtitles.api.LogIn('', '', 'pt-br', 'Popcorn Time NodeJS')
+.then((res)=>{
+    token = res.token;
+})
+
 
 const port = 1337;
 
 io.on("connection", socket => {
     console.log("connected")
+
+    //receives the movie data from the mobile app
     socket.on('app_startStream', (data)=>{
         const magnet = `magnet:?xt=urn:btih:${data.value.hash}&dn=a&tr=udp://open.demonii.com:1337/announce&tr=udp://tracker.openbittorrent.com:80&tr=udp://tracker.coppersurfer.tk:6969`
-        start(magnet);
+        start(data, magnet);
     })
 
     socket.on('app_startDownload', (data)=>{
@@ -32,8 +46,8 @@ io.on("connection", socket => {
 
     })
 
+    //received when the mobile app press the button to set the screen mode
     socket.on('app_changeScreen', (type)=>{
-        
         async function changeScreen(){
             await mouse.leftClick();
             await keyboard.pressKey(Key.F);
@@ -42,6 +56,7 @@ io.on("connection", socket => {
         changeScreen();
     })
 
+    //received when the mobile app press the button to close the window
     socket.on('app_closeProcess', (process)=>{
         if(process == 'vlc'){
             fkill(process + '.exe')
@@ -55,6 +70,78 @@ io.on("connection", socket => {
     })
 });
 
+//delete folder function pasted from stackoverflow
+const removeDir = function(path) {
+    if (fs.existsSync(path)) {
+      const files = fs.readdirSync(path)
+  
+      if (files.length > 0) {
+        files.forEach(function(filename) {
+          if (fs.statSync(path + "/" + filename).isDirectory()) {
+            removeDir(path + "/" + filename)
+          } else {
+            fs.unlinkSync(path + "/" + filename)
+          }
+        })
+        fs.rmdirSync(path)
+      } else {
+        fs.rmdirSync(path)
+      }
+    } else {
+      console.log("Directory path not found.")
+    }
+  }
+
+async function getSubtitles(imdb_code, directory){
+
+    //fetching directly from the opensubtitles api
+    return OpenSubtitles.api.SearchSubtitles(token,[{'imdbid': imdb_code, 'sublanguageid': config.subtitlesLanguage}])
+    .then((subtitles)=>{
+        const bestSub = subtitles.data[0];
+        const subDownLink = bestSub.ZipDownloadLink;
+
+        //download the subtitle zip to the directory
+        request
+        .get(subDownLink)
+        .on('error', function(error) {
+            console.log(error);
+        })
+        .pipe(fs.createWriteStream(directory + 'subtitle.zip'))
+        .on('finish', function() {
+
+            //unzipping the files to the directory
+            let zip = new admZip(directory + 'subtitle.zip');
+            zip.extractAllTo(directory, false, true);
+
+            //reads all the files on the directory and changes the subtitle to subtitle.srt
+            const directoryPath = path.join(directory);
+            fs.readdir(directoryPath, function (err, files) {
+                if (err) {
+                    return console.log('Unable to scan directory: ' + err);
+                } 
+                files.forEach(function (file) {
+                    if(file.includes('srt')){
+                        fs.renameSync(directory + file, directory + 'subtitle.srt');
+                        return;
+                    } 
+                });
+            });
+        });
+    })
+    .catch((e)=>{
+        console.error('subtitles api is offline')
+    })
+}
+
+// setTimeout(()=>{
+//     getSubtitles('4154756', 'G:/torrents/movies/Avengers Infinity War (2018) [BluRay] [1080p] [YTS.AM]/')
+//     .then(()=>{
+//         console.log('legenda baixada');
+//     })
+// },5000)
+
+
+//self-explanatory
 async function checkMediaPlayerOpened (type){
     return await windows.getProcesses()
     .then((processes)=>{
@@ -70,62 +157,74 @@ async function checkMediaPlayerOpened (type){
     })
 }
 
+//focus window based on the player
 const focus = (type) =>{
     if(type == 'vlc'){
         windows.focusWindow('VLC media player');
     }
 }
 
-async function start(uri) {
+//starts the torrent-stream engine and opens the vlc with the engine stream;
+async function start(data, uri) {
     if (!uri) {
       throw new Error("Uri is required");
     }
-    const parsedUri = magnet.decode(uri);
-    const name = parsedUri.name;
-    if (!name) {
-      throw new Error(`Invalid magnet uri ${uri}`);
-    }
+    console.log(data);
   
     const engine = await startEngine(uri);
-    await openVlc(engine);
-  
+    await openVlc(engine, data);
     return engine;
   };
 
+//starts the engine with the url provided by the yifi api
 function startEngine(uri) {
     return new Promise((resolve, reject) => {
-      debug(`Starting peerflix engine for ${uri}`);
+      //console.log(`Starting peerflix engine for ${uri}`);
       const engine = peerflix(uri, {path:config.torrentsPath});
       engine.server.on('listening', () => {
-        debug(`Engine started`);
+        console.log(`Engine started`);
         resolve(engine);
       });
       //todo error?
     });
 }
-  
-function openVlc(engine) {
+
+//opens the vlc process, still need to separate the functions
+function openVlc(engine, data) {
     return new Promise((resolve, reject) => {
+
+        const imdb_code = data.imdb_code.replace('tt', '');
+        let dirName = config.torrentsPath + '/' + engine.torrent.name + '/';
+        getSubtitles(imdb_code, dirName)
+        .then(()=>{
+        //stream url address
         let localHref = `http://localhost:${engine.server.address().port}/`;
-        //console.log(engine);
         let root;
+
+        //checking vlc installation
         regedit.list('HKLM\\SOFTWARE\\VideoLAN\\VLC', function(err, result) {
             pResult = result['HKLM\\SOFTWARE\\VideoLAN\\VLC'].values;
             if(!pResult){
-                debug('Please install vlc')
+                console.log('Please install vlc')
             }else{
                 root = pResult.InstallDir.value;
                 
                 let home = (process.env.HOME || '') + root;
-                let VLC_ARGS = `--fullscreen`;
+
+                const subtitleDirectory = `${dirName}subtitle.srt`.replace(/\//g, "\\");
+                const VLC_ARGS = `--fullscreen --sub-file="${subtitleDirectory}"`;
+                
                 const cmd = `"${home}\\vlc.exe" ${VLC_ARGS} ${localHref}`;
             
-                debug(`Opening VLC: ${cmd}`);
+                //send watching status to mobile app to show the buttons
                 io.sockets.emit('setWatching', true);
+
+                //opening vlc process
                 let vlc = proc.exec(cmd , (error, stdout, stderror) => {
                     if (error) {
                     reject(error);
                     } else {
+                    //code executed after vlc is closed
                     engine.destroy(()=>{
                         io.sockets.emit('setWatching', false);
                         resolve();
@@ -133,21 +232,21 @@ function openVlc(engine) {
                     }
                 });
 
-                var vlcOpened = false;
+                //focus on window if vlc is opened
                 let timer = setInterval(()=>{
                     checkMediaPlayerOpened('vlc')
                     .then((res)=>{
                         if(res == true){
                             focus('vlc');
-                            vlcOpened = true;
                             clearInterval(timer);
                         }
                     })
                 },1000)
-
                 io.sockets.emit('processType', 'vlc');
             }
         })
+    })
+
 
     });
 }
