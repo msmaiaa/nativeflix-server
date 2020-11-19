@@ -9,6 +9,9 @@ const path = require("path");
 const proc = require("child_process");
 const debug = require("debug")("vlc-streamer");
 const regedit = require('regedit')
+const {keyboard, Key} = require("@nut-tree/nut-js");
+const fkill = require('fkill');
+const windows = require('node-window-switcher');
 
 
 const port = 1337;
@@ -16,21 +19,43 @@ const port = 1337;
 io.on("connection", socket => {
     console.log("connected")
     socket.on('app_startStream', (data)=>{
-        console.log(data);
         const magnet = `magnet:?xt=urn:btih:${data.value.hash}&dn=a&tr=udp://open.demonii.com:1337/announce&tr=udp://tracker.openbittorrent.com:80&tr=udp://tracker.coppersurfer.tk:6969`
         start(magnet);
     })
 
     socket.on('app_startDownload', (data)=>{
-        console.log(data);
-        const magnet = `magnet:?xt=urn:btih:${data.value.hash}`
+        const magnet = `magnet:?xt=urn:btih:${data.value.hash}&dn=a&tr=udp://open.demonii.com:1337/announce&tr=udp://tracker.openbittorrent.com:80&tr=udp://tracker.coppersurfer.tk:6969`
 
     })
 
     socket.on('app_getStatus',()=>{
 
     })
+
+    socket.on('app_changeScreen', ()=>{
+        async function changeScreen(){
+            await keyboard.pressKey(Key.F);
+            await keyboard.releaseKey(Key.F);
+        }
+        changeScreen();
+    })
+
+    socket.on('app_closeProcess', (process)=>{
+        if(process == 'vlc.exe'){
+            fkill(process)
+            .then(()=>{
+                console.log('killed process');
+            })
+            .catch((err)=>{
+                console.log(err);
+            })
+        }
+    })
 });
+
+const focus = (type) =>{
+    windows.focusWindow(type);
+}
 
 async function start(uri) {
     if (!uri) {
@@ -41,8 +66,6 @@ async function start(uri) {
     if (!name) {
       throw new Error(`Invalid magnet uri ${uri}`);
     }
-  
-    const filepath = path.join(os.tmpdir(), name);
   
     const engine = await startEngine(uri);
     await openVlc(engine);
@@ -80,13 +103,20 @@ function openVlc(engine) {
             
                 debug(`Opening VLC: ${cmd}`);
             
+                io.sockets.emit('setWatching', true);
                 let vlc = proc.exec(cmd , (error, stdout, stderror) => {
                     if (error) {
                     reject(error);
                     } else {
-                    resolve();
+                    //console.log(engine)
+                    engine.destroy(()=>{
+                        io.sockets.emit('setWatching', false);
+                        resolve();
+                    });
                     }
                 });
+                focus('vlc.exe');
+                io.sockets.emit('processType', 'vlc.exe');
             }
         })
 
