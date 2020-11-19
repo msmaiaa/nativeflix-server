@@ -9,10 +9,10 @@ const path = require("path");
 const proc = require("child_process");
 const debug = require("debug")("vlc-streamer");
 const regedit = require('regedit')
-const {keyboard, Key} = require("@nut-tree/nut-js");
+const {keyboard, Key, mouse} = require("@nut-tree/nut-js");
 const fkill = require('fkill');
 const windows = require('node-window-switcher');
-
+const config = require('./config.json');
 
 const port = 1337;
 
@@ -32,8 +32,10 @@ io.on("connection", socket => {
 
     })
 
-    socket.on('app_changeScreen', ()=>{
+    socket.on('app_changeScreen', (type)=>{
+        
         async function changeScreen(){
+            await mouse.leftClick();
             await keyboard.pressKey(Key.F);
             await keyboard.releaseKey(Key.F);
         }
@@ -41,8 +43,8 @@ io.on("connection", socket => {
     })
 
     socket.on('app_closeProcess', (process)=>{
-        if(process == 'vlc.exe'){
-            fkill(process)
+        if(process == 'vlc'){
+            fkill(process + '.exe')
             .then(()=>{
                 console.log('killed process');
             })
@@ -53,8 +55,25 @@ io.on("connection", socket => {
     })
 });
 
+async function checkMediaPlayerOpened (type){
+    return await windows.getProcesses()
+    .then((processes)=>{
+        if(type == 'vlc'){
+            let isOpened = false;
+            for(p of processes){
+                if(p.MainWindowTitle == 'VLC media player'){
+                    isOpened = true;
+                }
+            }
+            return isOpened;
+        }
+    })
+}
+
 const focus = (type) =>{
-    windows.focusWindow(type);
+    if(type == 'vlc'){
+        windows.focusWindow('VLC media player');
+    }
 }
 
 async function start(uri) {
@@ -76,7 +95,7 @@ async function start(uri) {
 function startEngine(uri) {
     return new Promise((resolve, reject) => {
       debug(`Starting peerflix engine for ${uri}`);
-      const engine = peerflix(uri);
+      const engine = peerflix(uri, {path:config.torrentsPath});
       engine.server.on('listening', () => {
         debug(`Engine started`);
         resolve(engine);
@@ -88,7 +107,7 @@ function startEngine(uri) {
 function openVlc(engine) {
     return new Promise((resolve, reject) => {
         let localHref = `http://localhost:${engine.server.address().port}/`;
-    
+        //console.log(engine);
         let root;
         regedit.list('HKLM\\SOFTWARE\\VideoLAN\\VLC', function(err, result) {
             pResult = result['HKLM\\SOFTWARE\\VideoLAN\\VLC'].values;
@@ -98,25 +117,35 @@ function openVlc(engine) {
                 root = pResult.InstallDir.value;
                 
                 let home = (process.env.HOME || '') + root;
-                let VLC_ARGS = `--fullscreen `;
+                let VLC_ARGS = `--fullscreen`;
                 const cmd = `"${home}\\vlc.exe" ${VLC_ARGS} ${localHref}`;
             
                 debug(`Opening VLC: ${cmd}`);
-            
                 io.sockets.emit('setWatching', true);
                 let vlc = proc.exec(cmd , (error, stdout, stderror) => {
                     if (error) {
                     reject(error);
                     } else {
-                    //console.log(engine)
                     engine.destroy(()=>{
                         io.sockets.emit('setWatching', false);
                         resolve();
                     });
                     }
                 });
-                focus('vlc.exe');
-                io.sockets.emit('processType', 'vlc.exe');
+
+                var vlcOpened = false;
+                let timer = setInterval(()=>{
+                    checkMediaPlayerOpened('vlc')
+                    .then((res)=>{
+                        if(res == true){
+                            focus('vlc');
+                            vlcOpened = true;
+                            clearInterval(timer);
+                        }
+                    })
+                },1000)
+
+                io.sockets.emit('processType', 'vlc');
             }
         })
 
