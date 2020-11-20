@@ -43,6 +43,10 @@ io.on("connection", socket => {
     })
 
     socket.on('app_getStatus',()=>{
+        checkMediaPlayerOpened()
+        .then((res)=>{
+            socket.broadcast.emit('setWatching',res);
+        })
 
     })
 
@@ -74,10 +78,17 @@ io.on("connection", socket => {
 async function getSubtitles(data, directory){
     const imdb_code = data.imdb_code.replace('tt', '');
     //fetching directly from the opensubtitles api
-    await OpenSubtitles.api.SearchSubtitles(token,[{'imdbid': imdb_code, 'sublanguageid': config.subtitlesLanguage}])
+    return await OpenSubtitles.api.SearchSubtitles(token,[{'imdbid': imdb_code, 'sublanguageid': config.subtitlesLanguage}])
     .then((subtitles)=>{
         let goodSubtitles = [];
         let bestSubtitles = [];
+
+        //if server is offline or in maintenance
+        if(!subtitles.data){
+            return 400;
+        }
+
+        //checks for the best subtitle based on the yifi api
         for(s of subtitles.data){
             if(s.SubFileName.includes(data.value.quality)){
                 if(s.SubFileName.includes('YTS') || s.SubFileName.includes('YIFI') || s.SubFileName.includes('yts')){
@@ -96,7 +107,10 @@ async function getSubtitles(data, directory){
         }
         
         const subDownLink = bestSub.ZipDownloadLink;
+
+        //clearing the directory if it has old content
         fs.emptyDirSync(directory);
+
         //download the subtitle zip to the directory
         request
         .get(subDownLink)
@@ -119,7 +133,7 @@ async function getSubtitles(data, directory){
                 files.forEach(function (file) {
                     if(file.includes('srt')){
                         fs.renameSync(directory + file, directory + 'subtitle.srt');
-                        return;
+                        return 200;
                     } 
                 });
             });
@@ -187,7 +201,10 @@ function openVlc(engine, data) {
 
         let dirName = config.torrentsPath + '/' + engine.torrent.name + '/';
         getSubtitles(data, dirName)
-        .then(()=>{
+        .then((status)=>{
+        if(status != 200){
+            console.log('Subtitles api offline! Starting without subtitles');
+        }
         //stream url address
         let localHref = `http://localhost:${engine.server.address().port}/`;
         let root;
@@ -203,7 +220,12 @@ function openVlc(engine, data) {
                 let home = (process.env.HOME || '') + root;
 
                 const subtitleDirectory = `${dirName}subtitle.srt`.replace(/\//g, "\\");
-                const VLC_ARGS = `--fullscreen --sub-file="${subtitleDirectory}"`;
+                let VLC_ARGS;
+                if(status != 200){
+                    VLC_ARGS = `--fullscreen`;
+                }else{
+                    VLC_ARGS = `--fullscreen --sub-file="${subtitleDirectory}"`;
+                }
 
                 const cmd = `"${home}\\vlc.exe" ${VLC_ARGS} ${localHref}`;
             
