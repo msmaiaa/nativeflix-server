@@ -3,19 +3,18 @@ const app = express();
 const server = require("http").createServer(app);
 const io = require("socket.io").listen(server);
 const peerflix = require("peerflix");
-const magnet = require("magnet-uri");
 const os = require("os");
 const path = require("path");
 const proc = require("child_process");
 const regedit = require('regedit')
 const {keyboard, Key, mouse} = require("@nut-tree/nut-js");
 const fkill = require('fkill');
-const windows = require('node-window-switcher');
+const windows = require('./node-window-switcher');
 const config = require('./config.json');
 const OS = require('opensubtitles-api');
 const OpenSubtitles = new OS('Popcorn Time NodeJS');
 const request = require('superagent');
-const fs = require('fs');
+const fs = require('fs-extra');
 const admZip = require('adm-zip');
 
 let token = '';
@@ -70,36 +69,16 @@ io.on("connection", socket => {
     })
 });
 
-//delete folder function pasted from stackoverflow
-const removeDir = function(path) {
-    if (fs.existsSync(path)) {
-      const files = fs.readdirSync(path)
-  
-      if (files.length > 0) {
-        files.forEach(function(filename) {
-          if (fs.statSync(path + "/" + filename).isDirectory()) {
-            removeDir(path + "/" + filename)
-          } else {
-            fs.unlinkSync(path + "/" + filename)
-          }
-        })
-        fs.rmdirSync(path)
-      } else {
-        fs.rmdirSync(path)
-      }
-    } else {
-      console.log("Directory path not found.")
-    }
-  }
 
 async function getSubtitles(imdb_code, directory){
 
     //fetching directly from the opensubtitles api
-    return OpenSubtitles.api.SearchSubtitles(token,[{'imdbid': imdb_code, 'sublanguageid': config.subtitlesLanguage}])
+    await OpenSubtitles.api.SearchSubtitles(token,[{'imdbid': imdb_code, 'sublanguageid': config.subtitlesLanguage}])
     .then((subtitles)=>{
         const bestSub = subtitles.data[0];
         const subDownLink = bestSub.ZipDownloadLink;
 
+        fs.emptyDirSync(directory);
         //download the subtitle zip to the directory
         request
         .get(subDownLink)
@@ -132,14 +111,6 @@ async function getSubtitles(imdb_code, directory){
         console.error('subtitles api is offline')
     })
 }
-
-// setTimeout(()=>{
-//     getSubtitles('4154756', 'G:/torrents/movies/Avengers Infinity War (2018) [BluRay] [1080p] [YTS.AM]/')
-//     .then(()=>{
-//         console.log('legenda baixada');
-//     })
-// },5000)
-
 
 //self-explanatory
 async function checkMediaPlayerOpened (type){
@@ -213,7 +184,7 @@ function openVlc(engine, data) {
 
                 const subtitleDirectory = `${dirName}subtitle.srt`.replace(/\//g, "\\");
                 const VLC_ARGS = `--fullscreen --sub-file="${subtitleDirectory}"`;
-                
+
                 const cmd = `"${home}\\vlc.exe" ${VLC_ARGS} ${localHref}`;
             
                 //send watching status to mobile app to show the buttons
@@ -226,8 +197,10 @@ function openVlc(engine, data) {
                     } else {
                     //code executed after vlc is closed
                     engine.destroy(()=>{
-                        io.sockets.emit('setWatching', false);
-                        resolve();
+                        fs.emptyDir(dirName, ()=>{
+                            io.sockets.emit('setWatching', false);
+                            resolve();
+                        });
                     });
                     }
                 });

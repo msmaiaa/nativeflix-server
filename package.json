@@ -15,8 +15,8 @@
     "express": "^4.17.1",
     "fkill": "^7.0.1",
     "fs-extra": "^9.0.1",
-    "magnet-uri": "^6.1.0",
-    "node-window-switcher": "0.0.13",
+    "gulp": "^4.0.2",
+    "gulp-msbuild": "^0.6.2",
     "nodemon": "^2.0.6",
     "opensubtitles-api": "^5.1.2",
     "peerflix": "^0.39.0",
@@ -25,6 +25,7 @@
     "socket.io": "^2.3.0",
     "superagent": "^6.1.0",
     "taskkill": "^3.1.0",
-    "unzipper": "^0.10.11"
+    "unzipper": "^0.10.11",
+    "util": "^0.12.3"
   }
 }
