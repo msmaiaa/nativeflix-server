@@ -16,10 +16,11 @@ const OpenSubtitles = new OS('Popcorn Time NodeJS');
 const request = require('superagent');
 const fs = require('fs-extra');
 const admZip = require('adm-zip');
+const auth = require('./auth.json');
 
 let token = '';
-//just need the UserAgent, provided by popcorn time
-OpenSubtitles.api.LogIn('', '', 'pt-br', 'Popcorn Time NodeJS')
+//opensubtitles credentials
+OpenSubtitles.api.LogIn(auth.login, auth.password, 'pt-br', 'Butter V1')
 .then((res)=>{
     token = res.token;
 })
@@ -70,14 +71,31 @@ io.on("connection", socket => {
 });
 
 
-async function getSubtitles(imdb_code, directory){
-
+async function getSubtitles(data, directory){
+    const imdb_code = data.imdb_code.replace('tt', '');
     //fetching directly from the opensubtitles api
     await OpenSubtitles.api.SearchSubtitles(token,[{'imdbid': imdb_code, 'sublanguageid': config.subtitlesLanguage}])
     .then((subtitles)=>{
-        const bestSub = subtitles.data[0];
+        let goodSubtitles = [];
+        let bestSubtitles = [];
+        for(s of subtitles.data){
+            if(s.SubFileName.includes(data.value.quality)){
+                if(s.SubFileName.includes('YTS') || s.SubFileName.includes('YIFI') || s.SubFileName.includes('yts')){
+                    bestSubtitles.push(s);
+                }else{
+                    goodSubtitles.push(s);
+                }
+            }
+        }
+        
+        let bestSub = null;
+        if(bestSubtitles.length > 1){
+            bestSub = bestSubtitles[0]
+        }else{
+            bestSub = goodSubtitles[0];
+        }
+        
         const subDownLink = bestSub.ZipDownloadLink;
-
         fs.emptyDirSync(directory);
         //download the subtitle zip to the directory
         request
@@ -108,7 +126,9 @@ async function getSubtitles(imdb_code, directory){
         });
     })
     .catch((e)=>{
+        console.log(e);
         console.error('subtitles api is offline')
+        //return getSubtitles(data,directory);
     })
 }
 
@@ -140,7 +160,7 @@ async function start(data, uri) {
     if (!uri) {
       throw new Error("Uri is required");
     }
-    console.log(data);
+    console.log(`Starting ${data.title}`);
   
     const engine = await startEngine(uri);
     await openVlc(engine, data);
@@ -164,9 +184,9 @@ function startEngine(uri) {
 function openVlc(engine, data) {
     return new Promise((resolve, reject) => {
 
-        const imdb_code = data.imdb_code.replace('tt', '');
+
         let dirName = config.torrentsPath + '/' + engine.torrent.name + '/';
-        getSubtitles(imdb_code, dirName)
+        getSubtitles(data, dirName)
         .then(()=>{
         //stream url address
         let localHref = `http://localhost:${engine.server.address().port}/`;
@@ -197,10 +217,9 @@ function openVlc(engine, data) {
                     } else {
                     //code executed after vlc is closed
                     engine.destroy(()=>{
-                        fs.emptyDir(dirName, ()=>{
-                            io.sockets.emit('setWatching', false);
-                            resolve();
-                        });
+                        io.sockets.emit('setWatching', false);
+                        fs.emptyDir(dirName);
+                        resolve();
                     });
                     }
                 });
