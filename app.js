@@ -43,21 +43,32 @@ io.on("connection", socket => {
     })
 
     socket.on('app_getStatus',()=>{
-        checkMediaPlayerOpened()
+        console.log('get status');
+        checkMediaPlayerOpened('vlc')
         .then((res)=>{
-            socket.broadcast.emit('setWatching',res);
+            const result = res;
+            io.sockets.emit('setWatching',result);
+            io.sockets.emit('processType','vlc');
         })
 
     })
 
     //received when the mobile app press the button to set the screen mode
-    socket.on('app_changeScreen', (type)=>{
+    socket.on('app_changeScreen', ()=>{
         async function changeScreen(){
             await mouse.leftClick();
             await keyboard.pressKey(Key.F);
             await keyboard.releaseKey(Key.F);
         }
         changeScreen();
+    })
+
+    socket.on('app_pauseScreen', ()=>{
+        async function pauseScreen(){
+            await keyboard.pressKey(Key.Space);
+            await keyboard.releaseKey(Key.Space);
+        }
+        pauseScreen();
     })
 
     //received when the mobile app press the button to close the window
