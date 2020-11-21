@@ -3,7 +3,6 @@ const app = express();
 const server = require("http").createServer(app);
 const io = require("socket.io").listen(server);
 const peerflix = require("peerflix");
-const os = require("os");
 const path = require("path");
 const proc = require("child_process");
 const regedit = require('regedit')
@@ -89,14 +88,16 @@ io.on("connection", socket => {
 async function getSubtitles(data, directory){
     const imdb_code = data.imdb_code.replace('tt', '');
     //fetching directly from the opensubtitles api
-    return await OpenSubtitles.api.SearchSubtitles(token,[{'imdbid': imdb_code, 'sublanguageid': config.subtitlesLanguage}])
+    return OpenSubtitles.api.SearchSubtitles(token,[{'imdbid': imdb_code, 'sublanguageid': config.subtitlesLanguage}])
     .then((subtitles)=>{
         let goodSubtitles = [];
         let bestSubtitles = [];
-
+        let status;
         //if server is offline or in maintenance
         if(!subtitles.data){
-            return 400;
+            status = 400;
+        }else{
+            status = 200;
         }
 
         //checks for the best subtitle based on the yifi api
@@ -141,7 +142,7 @@ async function getSubtitles(data, directory){
                 if (err) {
                     return console.log('Unable to scan directory: ' + err);
                 } 
-                files.forEach(function (file) {
+                return files.forEach(function (file) {
                     if(file.includes('srt')){
                         fs.renameSync(directory + file, directory + 'subtitle.srt');
                         return 200;
@@ -149,11 +150,11 @@ async function getSubtitles(data, directory){
                 });
             });
         });
+        return status;
     })
     .catch((e)=>{
         console.log(e);
         console.error('subtitles api is offline')
-        //return getSubtitles(data,directory);
     })
 }
 
