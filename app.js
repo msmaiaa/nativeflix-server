@@ -98,7 +98,7 @@ function openVlc(engine, data) {
         subs.getSubtitles(data, dirName)
         .then((status)=>{
         if(status != 200){
-            console.log('Subtitles api offline! Starting without subtitles');
+            console.log(chalk.red('Starting without subtitles'));
         }
         //stream url address
         let localHref = `http://localhost:${engine.server.address().port}/`;

@@ -21,11 +21,20 @@ const getSubtitles = async function(data, directory){
         let goodSubtitles = [];
         let bestSubtitles = [];
         let status;
+
         //if server is offline or in maintenance
+        console.log(subtitles);
         if(!subtitles.data){
-            status = 400;
+            if(subtitles.status == '401 Unauthorized'){
+                console.log(chalk.red('Unauthorized status from the api, maybe the credentials are wrong.'));
+                status = 401;
+            }else{
+                status = 400;
+            }
+            return status;
         }else{
             status = 200;
+            return status;
         }
 
         //checks for the best subtitle based on the yifi api
