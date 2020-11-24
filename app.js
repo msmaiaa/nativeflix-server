@@ -8,6 +8,7 @@ const proc = require("child_process");
 const regedit = require('regedit')
 const fkill = require('fkill');
 const fs = require('fs-extra');
+const chalk = require('chalk');
 const utils = require('./src/utils/utils');
 const subs = require('./src/subtitles/subtitles');
 const windowManager = require('./src/windowManager/windowManager');
@@ -15,7 +16,7 @@ const port = process.env.PORT;
 
 
 io.on("connection", socket => {
-    console.log("App connected")
+    console.log(chalk.yellow("App connected"));
 
     //receives the movie data from the mobile app
     socket.on('app_startStream', (data)=>{
@@ -28,6 +29,7 @@ io.on("connection", socket => {
     //     const magnet = utils.generateMagnet(data.value.hash);
     // })
 
+    //mobile app requesting status when the component is mounted
     socket.on('app_getStatus',()=>{
         windowManager.checkMediaPlayerOpened('vlc')
         .then((res)=>{
@@ -71,7 +73,7 @@ async function start(data, uri) {
     if (!uri) {
       throw new Error("Uri is required");
     }
-    console.log(`Starting ${data.title}`);
+    console.log(chalk.cyan(`Starting ${data.title}`));
   
     const engine = await startEngine(uri);
     await openVlc(engine, data);
@@ -81,11 +83,11 @@ async function start(data, uri) {
 //starts the engine with the url provided by the yifi api
 function startEngine(uri) {
     return new Promise((resolve, reject) => {
-      const engine = peerflix(uri, {path:process.env.torrentsPath});
-      engine.server.on('listening', () => {
-        resolve(engine);
-      });
-      //todo error?
+        const engine = peerflix(uri, {path:process.env.torrentsPath});
+        engine.server.on('listening', () => {
+            resolve(engine);
+        });
+        //todo error?
     });
 }
 
