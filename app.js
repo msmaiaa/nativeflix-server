@@ -3,50 +3,35 @@ const app = express();
 const server = require("http").createServer(app);
 const io = require("socket.io").listen(server);
 const peerflix = require("peerflix");
-const path = require("path");
 const proc = require("child_process");
 const regedit = require('regedit')
-const {keyboard, Key} = require("@nut-tree/nut-js");
 const fkill = require('fkill');
-const windows = require('./node-window-switcher');
-const config = require('./config.json');
-const OS = require('opensubtitles-api');
-const OpenSubtitles = new OS('Popcorn Time NodeJS');
-const request = require('superagent');
 const fs = require('fs-extra');
-const admZip = require('adm-zip');
-const auth = require('./auth.json');
-const activeWin = require('active-win');
-
-let token = '';
-//opensubtitles credentials
-OpenSubtitles.api.LogIn(auth.login, auth.password, 'pt-br', 'Butter V1')
-.then((res)=>{
-    token = res.token;
-})
-
-
+const config = require('./config.json');
+const utils = require('./src/utils/utils');
+const subs = require('./src/subtitles/subtitles');
+const windowManager = require('./src/windowManager/windowManager');
 const port = 1337;
 
+
 io.on("connection", socket => {
-    console.log("connected")
+    console.log("App connected")
 
     //receives the movie data from the mobile app
     socket.on('app_startStream', (data)=>{
-        const magnet = `magnet:?xt=urn:btih:${data.value.hash}&dn=a&tr=udp://open.demonii.com:1337/announce&tr=udp://tracker.openbittorrent.com:80&tr=udp://tracker.coppersurfer.tk:6969`
+        const magnet = utils.generateMagnet(data.value.hash);
         start(data, magnet);
     })
 
-    socket.on('app_startDownload', (data)=>{
-        const magnet = `magnet:?xt=urn:btih:${data.value.hash}&dn=a&tr=udp://open.demonii.com:1337/announce&tr=udp://tracker.openbittorrent.com:80&tr=udp://tracker.coppersurfer.tk:6969`
-
-    })
+    //todo
+    // socket.on('app_startDownload', (data)=>{
+    //     const magnet = utils.generateMagnet(data.value.hash);
+    // })
 
     socket.on('app_getStatus',()=>{
-        checkMediaPlayerOpened('vlc')
+        windowManager.checkMediaPlayerOpened('vlc')
         .then((res)=>{
-            const result = res;
-            io.sockets.emit('setWatching',result);
+            io.sockets.emit('setWatching',res);
             io.sockets.emit('processType','vlc');
         })
 
@@ -54,24 +39,16 @@ io.on("connection", socket => {
 
     //received when the mobile app press the button to set the screen mode
     socket.on('app_changeScreen', ()=>{
-        async function changeScreen(){
-            await keyboard.pressKey(Key.F);
-            await keyboard.releaseKey(Key.F);
-        }
-        focus('vlc')
+        windowManager.focus('vlc')
         .then(()=>{
-            changeScreen();
+            utils.changeScreen();
         }) 
     })
 
     socket.on('app_pauseScreen', ()=>{
-        async function pauseScreen(){
-            await keyboard.pressKey(Key.Space);
-            await keyboard.releaseKey(Key.Space);
-        }
-        focus('vlc')
+        windowManager.focus('vlc')
         .then(()=>{
-            pauseScreen();
+            utils.pauseScreen();
         })
     })
 
@@ -80,7 +57,7 @@ io.on("connection", socket => {
         if(process == 'vlc'){
             fkill(process + '.exe')
             .then(()=>{
-                console.log('killed process');
+                // console.log('killed process');
             })
             .catch((err)=>{
                 console.log(err);
@@ -88,122 +65,6 @@ io.on("connection", socket => {
         }
     })
 });
-
-
-async function getSubtitles(data, directory){
-    const imdb_code = data.imdb_code.replace('tt', '');
-    //fetching directly from the opensubtitles api
-    return OpenSubtitles.api.SearchSubtitles(token,[{'imdbid': imdb_code, 'sublanguageid': config.subtitlesLanguage}])
-    .then((subtitles)=>{
-        let goodSubtitles = [];
-        let bestSubtitles = [];
-        let status;
-        //if server is offline or in maintenance
-        if(!subtitles.data){
-            status = 400;
-        }else{
-            status = 200;
-        }
-
-        //checks for the best subtitle based on the yifi api
-        for(s of subtitles.data){
-            if(s.SubFileName.includes(data.value.quality)){
-                if(s.SubFileName.includes('YTS') || s.SubFileName.includes('YIFI') || s.SubFileName.includes('yts')){
-                    bestSubtitles.push(s);
-                }else{
-                    goodSubtitles.push(s);
-                }
-            }
-        }
-        
-        let bestSub = null;
-        if(bestSubtitles.length > 1){
-            bestSub = bestSubtitles[0]
-        }else{
-            bestSub = goodSubtitles[0];
-        }
-        
-        const subDownLink = bestSub.ZipDownloadLink;
-
-        //clearing the directory if it has old content
-        fs.emptyDirSync(directory);
-
-        //download the subtitle zip to the directory
-        request
-        .get(subDownLink)
-        .on('error', function(error) {
-            console.log(error);
-        })
-        .pipe(fs.createWriteStream(directory + 'subtitle.zip'))
-        .on('finish', function() {
-
-            //unzipping the files to the directory
-            let zip = new admZip(directory + 'subtitle.zip');
-            zip.extractAllTo(directory, false, true);
-
-            //reads all the files on the directory and changes the subtitle to subtitle.srt
-            const directoryPath = path.join(directory);
-            fs.readdir(directoryPath, function (err, files) {
-                if (err) {
-                    return console.log('Unable to scan directory: ' + err);
-                } 
-                return files.forEach(function (file) {
-                    if(file.includes('srt')){
-                        fs.renameSync(directory + file, directory + 'subtitle.srt');
-                        return 200;
-                    } 
-                });
-            });
-        });
-        return status;
-    })
-    .catch((e)=>{
-        console.log(e);
-        console.error('subtitles api is offline')
-    })
-}
-
-//self-explanatory
-async function checkMediaPlayerOpened (type){
-    return await windows.getProcesses()
-    .then((processes)=>{
-        if(type == 'vlc'){
-            let isOpened = false;
-            for(p of processes){
-                if(p.MainWindowTitle == 'VLC media player'){
-                    isOpened = true;
-                }
-            }
-            return isOpened;
-        }
-    })
-}
-
-//focus window based on the player
-async function focus(type){
-    if(type == 'vlc'){
-        return checkFocus('vlc.exe')
-        .then((window)=>{
-            if(!window){
-                windows.focusWindow('VLC media player');
-                return;      
-            }
-        })
-    }
-}
-
-//checks the current window focus (activeWin uses the vs build tools)
-const checkFocus = (process)=>{
-    return activeWin()
-    .then((window)=>{
-        console.log(window.owner.name)
-        if(window.owner.name != process){
-            return false;
-        }else{
-            return true;
-        }
-    })
-}
 
 //starts the torrent-stream engine and opens the vlc with the engine stream;
 async function start(data, uri) {
@@ -220,7 +81,6 @@ async function start(data, uri) {
 //starts the engine with the url provided by the yifi api
 function startEngine(uri) {
     return new Promise((resolve, reject) => {
-      //console.log(`Starting peerflix engine for ${uri}`);
       const engine = peerflix(uri, {path:config.torrentsPath});
       engine.server.on('listening', () => {
         resolve(engine);
@@ -232,10 +92,8 @@ function startEngine(uri) {
 //opens the vlc process, still need to separate the functions
 function openVlc(engine, data) {
     return new Promise((resolve, reject) => {
-
-
         let dirName = config.torrentsPath + '/' + engine.torrent.name + '/';
-        getSubtitles(data, dirName)
+        subs.getSubtitles(data, dirName)
         .then((status)=>{
         if(status != 200){
             console.log('Subtitles api offline! Starting without subtitles');
@@ -283,10 +141,10 @@ function openVlc(engine, data) {
 
                 //focus on window if vlc is opened
                 let timer = setInterval(()=>{
-                    checkMediaPlayerOpened('vlc')
+                    windowManager.checkMediaPlayerOpened('vlc')
                     .then((res)=>{
                         if(res == true){
-                            focus('vlc');
+                            windowManager.focus('vlc');
                             clearInterval(timer);
                         }
                     })
