@@ -1,3 +1,4 @@
+require('dotenv').config()
 const express = require("express");
 const app = express();
 const server = require("http").createServer(app);
@@ -7,11 +8,10 @@ const proc = require("child_process");
 const regedit = require('regedit')
 const fkill = require('fkill');
 const fs = require('fs-extra');
-const config = require('./config.json');
 const utils = require('./src/utils/utils');
 const subs = require('./src/subtitles/subtitles');
 const windowManager = require('./src/windowManager/windowManager');
-const port = 1337;
+const port = process.env.PORT;
 
 
 io.on("connection", socket => {
@@ -81,7 +81,7 @@ async function start(data, uri) {
 //starts the engine with the url provided by the yifi api
 function startEngine(uri) {
     return new Promise((resolve, reject) => {
-      const engine = peerflix(uri, {path:config.torrentsPath});
+      const engine = peerflix(uri, {path:process.env.torrentsPath});
       engine.server.on('listening', () => {
         resolve(engine);
       });
@@ -92,7 +92,7 @@ function startEngine(uri) {
 //opens the vlc process, still need to separate the functions
 function openVlc(engine, data) {
     return new Promise((resolve, reject) => {
-        let dirName = config.torrentsPath + '/' + engine.torrent.name + '/';
+        let dirName = process.env.torrentsPath + '/' + engine.torrent.name + '/';
         subs.getSubtitles(data, dirName)
         .then((status)=>{
         if(status != 200){

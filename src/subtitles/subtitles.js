@@ -5,7 +5,6 @@ const admZip = require('adm-zip');
 const OS = require('opensubtitles-api');
 const OpenSubtitles = new OS('Popcorn Time NodeJS');
 const fs = require('fs-extra');
-const config = require('../../config.json');
 
 let token = '';
 //opensubtitles credentials
@@ -17,7 +16,7 @@ OpenSubtitles.api.LogIn(process.env.LOGIN, process.env.PASS, 'pt-br', 'Butter V1
 const getSubtitles = async function(data, directory){
     const imdb_code = data.imdb_code.replace('tt', '');
     //fetching directly from the opensubtitles api
-    return OpenSubtitles.api.SearchSubtitles(token,[{'imdbid': imdb_code, 'sublanguageid': config.subtitlesLanguage}])
+    return OpenSubtitles.api.SearchSubtitles(token,[{'imdbid': imdb_code, 'sublanguageid': process.env.subtitlesLanguage}])
     .then((subtitles)=>{
         let goodSubtitles = [];
         let bestSubtitles = [];
