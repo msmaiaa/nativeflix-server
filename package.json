@@ -10,6 +10,7 @@
   "license": "ISC",
   "dependencies": {
     "@nut-tree/nut-js": "^1.5.0",
+    "active-win": "^6.2.0",
     "adm-zip": "^0.4.16",
     "debug": "^4.2.0",
     "express": "^4.17.1",

@@ -6,7 +6,7 @@ const peerflix = require("peerflix");
 const path = require("path");
 const proc = require("child_process");
 const regedit = require('regedit')
-const {keyboard, Key, mouse} = require("@nut-tree/nut-js");
+const {keyboard, Key} = require("@nut-tree/nut-js");
 const fkill = require('fkill');
 const windows = require('./node-window-switcher');
 const config = require('./config.json');
@@ -16,6 +16,7 @@ const request = require('superagent');
 const fs = require('fs-extra');
 const admZip = require('adm-zip');
 const auth = require('./auth.json');
+const activeWin = require('active-win');
 
 let token = '';
 //opensubtitles credentials
@@ -42,7 +43,6 @@ io.on("connection", socket => {
     })
 
     socket.on('app_getStatus',()=>{
-        console.log('get status');
         checkMediaPlayerOpened('vlc')
         .then((res)=>{
             const result = res;
@@ -55,11 +55,13 @@ io.on("connection", socket => {
     //received when the mobile app press the button to set the screen mode
     socket.on('app_changeScreen', ()=>{
         async function changeScreen(){
-            await mouse.leftClick();
             await keyboard.pressKey(Key.F);
             await keyboard.releaseKey(Key.F);
         }
-        changeScreen();
+        focus('vlc')
+        .then(()=>{
+            changeScreen();
+        }) 
     })
 
     socket.on('app_pauseScreen', ()=>{
@@ -67,7 +69,10 @@ io.on("connection", socket => {
             await keyboard.pressKey(Key.Space);
             await keyboard.releaseKey(Key.Space);
         }
-        pauseScreen();
+        focus('vlc')
+        .then(()=>{
+            pauseScreen();
+        })
     })
 
     //received when the mobile app press the button to close the window
@@ -175,10 +180,29 @@ async function checkMediaPlayerOpened (type){
 }
 
 //focus window based on the player
-const focus = (type) =>{
+async function focus(type){
     if(type == 'vlc'){
-        windows.focusWindow('VLC media player');
+        return checkFocus('vlc.exe')
+        .then((window)=>{
+            if(!window){
+                windows.focusWindow('VLC media player');
+                return;      
+            }
+        })
     }
+}
+
+//checks the current window focus (activeWin uses the vs build tools)
+const checkFocus = (process)=>{
+    return activeWin()
+    .then((window)=>{
+        console.log(window.owner.name)
+        if(window.owner.name != process){
+            return false;
+        }else{
+            return true;
+        }
+    })
 }
 
 //starts the torrent-stream engine and opens the vlc with the engine stream;
@@ -199,7 +223,6 @@ function startEngine(uri) {
       //console.log(`Starting peerflix engine for ${uri}`);
       const engine = peerflix(uri, {path:config.torrentsPath});
       engine.server.on('listening', () => {
-        console.log(`Engine started`);
         resolve(engine);
       });
       //todo error?

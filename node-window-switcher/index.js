@@ -1,3 +1,9 @@
+/////////////////////
+
+// credits to https://www.npmjs.com/package/node-window-switcher
+
+/////////////////////
+
 const util = require('util');
 const exec = util.promisify(require("child_process").exec);
 const path = require("path");
