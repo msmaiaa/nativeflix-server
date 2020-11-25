@@ -13,7 +13,7 @@ const utils = require('./src/utils/utils');
 const subs = require('./src/subtitles/subtitles');
 const windowManager = require('./src/windowManager/windowManager');
 const port = process.env.PORT;
-
+let g_activeMovieCode = null;
 
 io.on("connection", socket => {
     console.log(chalk.yellow("App connected"));
@@ -21,7 +21,21 @@ io.on("connection", socket => {
     //receives the movie data from the mobile app
     socket.on('app_startStream', (data)=>{
         const magnet = utils.generateMagnet(data.value.hash);
-        start(data, magnet);
+        g_activeMovieCode = data.imdb_code;
+        windowManager.checkMediaPlayerOpened('vlc')
+        .then((res)=>{
+            if(res){
+                fkill('vlc.exe')
+                .then(()=>{
+                    start(data, magnet);
+                })
+                .catch((err)=>{
+                    console.log(chalk.red('Error while trying to delete vlc window'));
+                })        
+            }else{
+                start(data, magnet);
+            }
+        })
     })
 
     //todo
@@ -33,7 +47,7 @@ io.on("connection", socket => {
     socket.on('app_getStatus',()=>{
         windowManager.checkMediaPlayerOpened('vlc')
         .then((res)=>{
-            io.sockets.emit('setWatching',res);
+            io.sockets.emit('setWatching',{condition:res, activeCode:g_activeMovieCode});
             io.sockets.emit('processType','vlc');
         })
 
@@ -58,12 +72,6 @@ io.on("connection", socket => {
     socket.on('app_closeProcess', (process)=>{
         if(process == 'vlc'){
             fkill(process + '.exe')
-            .then(()=>{
-                // console.log('killed process');
-            })
-            .catch((err)=>{
-                console.log(err);
-            })
         }
     })
 });
@@ -95,67 +103,80 @@ function startEngine(uri) {
 function openVlc(engine, data) {
     return new Promise((resolve, reject) => {
         let dirName = process.env.torrentsPath + '/' + engine.torrent.name + '/';
-        subs.getSubtitles(data, dirName)
-        .then((status)=>{
-        if(status != 200){
-            console.log(chalk.red('Starting without subtitles'));
-        }
-        //stream url address
-        let localHref = `http://localhost:${engine.server.address().port}/`;
-        let root;
-
         //checking vlc installation
-        regedit.list('HKLM\\SOFTWARE\\VideoLAN\\VLC', function(err, result) {
-            pResult = result['HKLM\\SOFTWARE\\VideoLAN\\VLC'].values;
-            if(!pResult){
-                console.log('Please install vlc')
-            }else{
-                root = pResult.InstallDir.value;
-                
-                let home = (process.env.HOME || '') + root;
-
-                const subtitleDirectory = `${dirName}subtitle.srt`.replace(/\//g, "\\");
-                let VLC_ARGS;
-                if(status != 200){
-                    VLC_ARGS = `--fullscreen`;
-                }else{
-                    VLC_ARGS = `--fullscreen --sub-file="${subtitleDirectory}"`;
-                }
-
-                const cmd = `"${home}\\vlc.exe" ${VLC_ARGS} ${localHref}`;
-            
-                //send watching status to mobile app to show the buttons
-                io.sockets.emit('setWatching', true);
-
-                //opening vlc process
-                let vlc = proc.exec(cmd , (error, stdout, stderror) => {
-                    if (error) {
-                    reject(error);
-                    } else {
-                    //code executed after vlc is closed
-                    engine.destroy(()=>{
-                        io.sockets.emit('setWatching', false);
-                        fs.emptyDir(dirName);
-                        resolve();
-                    });
+        regedit.list('HKLM\\SOFTWARE\\VideoLAN\\VLC', (err, result) =>{
+            if(!result){
+                regedit.list('HKLM\\SOFTWARE\\WOW6432Node\\VideoLAN\\VLC', (err, result)=>{
+                    if(!result){
+                        console.log(chalk.red('Please install VLC'));
+                        process.exit();
+                    }else{
+                        let pResult = result['HKLM\\SOFTWARE\\WOW6432Node\\VideoLAN\\VLC'].values;
+                        exec(pResult);
                     }
-                });
-
-                //focus on window if vlc is opened
-                let timer = setInterval(()=>{
-                    windowManager.checkMediaPlayerOpened('vlc')
-                    .then((res)=>{
-                        if(res == true){
-                            windowManager.focus('vlc');
-                            clearInterval(timer);
-                        }
-                    })
-                },1000)
-                io.sockets.emit('processType', 'vlc');
+                })
+            }else{
+                let pResult = result['HKLM\\SOFTWARE\\VideoLAN\\VLC'].values;
+                exec(pResult);
             }
+            
         })
-    })
 
+        const exec = (result) =>{
+            subs.getSubtitles(data, dirName)
+            .then((status)=>{
+            if(status != 200){
+                console.log(chalk.red('Starting without subtitles'));
+            }
+            //stream url address
+            let localHref = `http://localhost:${engine.server.address().port}/`;
+            let root;
+    
+            root = result.InstallDir.value;
+                
+            let home = (process.env.HOME || '') + root;
+    
+            const subtitleDirectory = `${dirName}subtitle.srt`.replace(/\//g, "\\");
+            let VLC_ARGS;
+            if(status != 200){
+                VLC_ARGS = `--fullscreen`;
+            }else{
+                VLC_ARGS = `--fullscreen --sub-file="${subtitleDirectory}"`;
+            }
+    
+            const cmd = `"${home}\\vlc.exe" ${VLC_ARGS} ${localHref}`;
+        
+            //send watching status to mobile app to show the buttons
+            io.sockets.emit('setWatching', {condition: true, activeCode: g_activeMovieCode});
+    
+            //opening vlc process
+            let vlc = proc.exec(cmd , (error, stdout, stderror) => {
+                if (error) {
+                reject(error);
+                } else {
+                //code executed after vlc is closed
+                engine.destroy(()=>{
+                    io.sockets.emit('setWatching', {condition:false, activeCode: g_activeMovieCode});
+                    fs.emptyDir(dirName);
+                    resolve();
+                });
+                }
+            });
+    
+            //focus on window if vlc is opened
+            let timer = setInterval(()=>{
+                windowManager.checkMediaPlayerOpened('vlc')
+                .then((res)=>{
+                    if(res == true){
+                        windowManager.focus('vlc');
+                        clearInterval(timer);
+                    }
+                })
+            },1000)
+            io.sockets.emit('processType', 'vlc');
+    
+        })
+        }
 
     });
 }
