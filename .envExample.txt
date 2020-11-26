@@ -1,5 +1,5 @@
-LOGIN=<opensubtitles login>
-PASS=<opensubtitles password>
-PORT=<1337>
-torrentsPath=<G:/torrents/movies>
-subtitlesLanguage=<iso639-1 or iso639-2 codes (put pob for pt-br)>
+LOGIN=email@mail.com
+PASS=secretPassword
+PORT=1337
+torrentsPath=G:/torrents/movies
+subtitlesLanguage=pob
