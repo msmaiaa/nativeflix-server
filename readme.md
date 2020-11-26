@@ -15,8 +15,8 @@ This is the back-end wrapper for the [nativeflix app](https://github.com/msmaiaa
 
 
 ## Preview
-![gif1](./src/assets/server1.gif)
-![gif2](./src/assets/server2.gif)
+![gif1](./src/assets/gif/server1.gif)
+![gif2](./src/assets/gif/server2.gif)
 
 ## Installation
 
