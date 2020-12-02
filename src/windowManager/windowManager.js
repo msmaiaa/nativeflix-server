@@ -35,11 +35,7 @@ const focus = async function(type){
 const checkFocus = function(process){
     return activeWin()
     .then((window)=>{
-        if(window.owner.name != process){
-            return false;
-        }else{
-            return true;
-        }
+        return window.owner.name != process
     })
 }
 
