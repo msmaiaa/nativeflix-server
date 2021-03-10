@@ -22,20 +22,21 @@ io.on("connection", socket => {
     socket.on('app_startStream', (data)=>{
         const magnet = utils.generateMagnet(data.value.hash);
         g_activeMovieCode = data.imdb_code;
-        windowManager.checkMediaPlayerOpened('vlc')
-        .then((res)=>{
-            if(res){
-                fkill('vlc.exe')
-                .then(()=>{
-                    start(data, magnet);
-                })
-                .catch((err)=>{
-                    console.log(chalk.red('Error while trying to delete vlc window'));
-                })        
-            }else{
-                start(data, magnet);
-            }
-        })
+        start(data, magnet);
+        // windowManager.checkMediaPlayerOpened('vlc')
+        // .then((res)=>{
+        //     if(res){
+        //         fkill('vlc.exe')
+        //         .then(()=>{
+        //             start(data, magnet);
+        //         })
+        //         .catch((err)=>{
+        //             console.log(chalk.red('Error while trying to delete vlc window'));
+        //         })        
+        //     }else{
+        //         start(data, magnet);
+        //     }
+        // })
     })
 
     //todo
@@ -45,27 +46,27 @@ io.on("connection", socket => {
 
     //mobile app requesting status when the component is mounted
     socket.on('app_getStatus',()=>{
-        windowManager.checkMediaPlayerOpened('vlc')
-        .then((res)=>{
-            io.sockets.emit('setWatching',{condition:res, activeCode:g_activeMovieCode});
-            io.sockets.emit('processType','vlc');
-        })
+        // windowManager.checkMediaPlayerOpened('vlc')
+        // .then((res)=>{
+        //     io.sockets.emit('setWatching',{condition:res, activeCode:g_activeMovieCode});
+        //     io.sockets.emit('processType','vlc');
+        // })
 
     })
 
     //received when the mobile app press the button to set the screen mode
     socket.on('app_changeScreen', ()=>{
-        windowManager.focus('vlc')
-        .then(()=>{
-            utils.changeScreen();
-        }) 
+        // windowManager.focus('vlc')
+        // .then(()=>{
+        //     utils.changeScreen();
+        // }) 
     })
 
     socket.on('app_pauseScreen', ()=>{
-        windowManager.focus('vlc')
-        .then(()=>{
-            utils.pauseScreen();
-        })
+        // windowManager.focus('vlc')
+        // .then(()=>{
+        //     utils.pauseScreen();
+        // })
     })
 
     //received when the mobile app press the button to close the window
@@ -130,6 +131,7 @@ function openVlc(engine, data) {
             }
             //stream url address
             let localHref = `http://localhost:${engine.server.address().port}/`;
+            console.log(localHref)
             let root;
     
             root = result.InstallDir.value;
@@ -165,13 +167,13 @@ function openVlc(engine, data) {
     
             //focus on window if vlc is opened
             let timer = setInterval(()=>{
-                windowManager.checkMediaPlayerOpened('vlc')
-                .then((res)=>{
-                    if(res == true){
-                        windowManager.focus('vlc');
-                        clearInterval(timer);
-                    }
-                })
+                // windowManager.checkMediaPlayerOpened('vlc')
+                // .then((res)=>{
+                //     if(res == true){
+                //         windowManager.focus('vlc');
+                //         clearInterval(timer);
+                //     }
+                // })
             },1000)
             io.sockets.emit('processType', 'vlc');
     
@@ -183,4 +185,4 @@ function openVlc(engine, data) {
 
 
 
-server.listen(port, () => console.log("server running on port:" + port));
+server.listen(port,() => console.log("server running on port:" + port));
