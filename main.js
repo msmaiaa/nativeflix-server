@@ -1,27 +1,34 @@
-const {app, BrowserWindow} = require('electron')
+const {app, BrowserWindow, ipcMain} = require('electron')
 const path = require('path')
 require('dotenv').config()
+require('electron-reloader')(module)
 const express = require("express");
 const exp = express();
 const server = require("http").createServer(exp);
 const io = require("socket.io").listen(server);
+const fs = require('fs-extra');
 const peerflix = require("peerflix");
 const chalk = require('chalk');
 const utils = require('./src/utils/utils');
 const subs = require('./src/subtitles/subtitles');
 const port = process.env.PORT;
 let g_activeMovieCode = null;
+let mainWindow = null;
+
+// setInterval(()=>{
+//     mainWindow.webContents.send('teste', 'huebr');
+// },10000)
 
 //electron stuff
-
 function createWindow () {
-    const mainWindow = new BrowserWindow({
+    mainWindow = new BrowserWindow({
       width: 800,
       height: 600,
+      frame:false,
       webPreferences: {
         webSecurity: false,
         preload: path.join(__dirname, './electron/preload.js')
-      }
+      },
     })
     mainWindow.loadFile('./electron/index.html')
   }
@@ -89,7 +96,7 @@ async function start(data, uri) {
     console.log(chalk.cyan(`Starting ${data.title}`));
   
     const engine = await startEngine(uri);
-    await openVlc(engine, data);
+    await openPlayer(engine, data);
     return engine;
   };
 
@@ -105,73 +112,35 @@ function startEngine(uri) {
 }
 
 //opens the vlc process, still need to separate the functions
-function openVlc(engine, data) {
+function openPlayer(engine, data) {
     return new Promise((resolve, reject) => {
         let dirName = process.env.torrentsPath + '/' + engine.torrent.name + '/';
-        //checking vlc installation
-        regedit.list('HKLM\\SOFTWARE\\VideoLAN\\VLC', (err, result) =>{
-            if(!result){
-                regedit.list('HKLM\\SOFTWARE\\WOW6432Node\\VideoLAN\\VLC', (err, result)=>{
-                    if(!result){
-                        console.log(chalk.red('Please install VLC'));
-                        process.exit();
-                    }else{
-                        let pResult = result['HKLM\\SOFTWARE\\WOW6432Node\\VideoLAN\\VLC'].values;
-                        exec(pResult);
-                    }
-                })
-            }else{
-                let pResult = result['HKLM\\SOFTWARE\\VideoLAN\\VLC'].values;
-                exec(pResult);
-            }
-            
-        })
-
-        const exec = (result) =>{
-            subs.getSubtitles(data, dirName)
-            .then((status)=>{
-            if(status != 200){
-                console.log(chalk.red('Starting without subtitles'));
-            }
-            //stream url address
-            let localHref = `http://localhost:${engine.server.address().port}/`;
-            console.log(localHref)
-            let root;
-    
-            root = result.InstallDir.value;
-                
-            let home = (process.env.HOME || '') + root;
-    
-            const subtitleDirectory = `${dirName}subtitle.srt`.replace(/\//g, "\\");
-            let VLC_ARGS;
-            if(status != 200){
-                VLC_ARGS = `--fullscreen`;
-            }else{
-                VLC_ARGS = `--fullscreen --sub-file="${subtitleDirectory}"`;
-            }
-    
-            const cmd = `"${home}\\vlc.exe" ${VLC_ARGS} ${localHref}`;
         
-            //send watching status to mobile app to show the buttons
-            io.sockets.emit('setWatching', {condition: true, activeCode: g_activeMovieCode});
-    
-            //opening vlc process
-            let vlc = proc.exec(cmd , (error, stdout, stderror) => {
-                if (error) {
-                reject(error);
-                } else {
-                //code executed after vlc is closed
-                engine.destroy(()=>{
-                    io.sockets.emit('setWatching', {condition:false, activeCode: g_activeMovieCode});
-                    fs.emptyDir(dirName);
-                    resolve();
-                });
+        subs.getSubtitles(data, dirName)
+        .then((status)=>{
+                if(status != 200){
+                    console.log(chalk.red('Starting without subtitles'));
                 }
-            });
-    
-        })
-        }
+                //stream url address
+                let localHref = `http://localhost:${engine.server.address().port}/`;
 
+                const subtitleDirectory = `${dirName}`.replace(/\//g, "\\");
+
+            
+                //send watching status to mobile app to show the buttons
+                io.sockets.emit('setWatching', {condition: true, activeCode: g_activeMovieCode});
+
+                //opening player on electron frontend
+                mainWindow.webContents.send('startPlayer', {url: localHref, subDir: subtitleDirectory});
+
+                //code executed after player is closed
+                // engine.destroy(()=>{
+                //     io.sockets.emit('setWatching', {condition:false, activeCode: g_activeMovieCode});
+                //     fs.emptyDir(dirName);
+                //     resolve();
+                // });
+            }
+        )
     });
 }
 
