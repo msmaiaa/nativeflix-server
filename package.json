@@ -13,6 +13,7 @@
     "adm-zip": "^0.5.4",
     "chalk": "^4.1.0",
     "debug": "^4.3.1",
+    "del": "^6.0.0",
     "dotenv": "^8.2.0",
     "electron": "^12.0.0",
     "electron-reloader": "^1.2.0",
@@ -21,16 +22,22 @@
     "gulp": "^4.0.2",
     "gulp-msbuild": "^0.6.4",
     "jquery": "^3.6.0",
+    "mime": "^2.5.2",
     "nodemon": "^2.0.7",
     "opensubtitles-api": "^5.1.2",
     "peerflix": "^0.39.0",
+    "pump": "^3.0.0",
+    "range-parser": "^1.2.1",
     "regedit": "^3.0.3",
     "request": "^2.88.2",
     "socket.io": "^2.4.1",
     "srt-to-vtt": "^1.1.3",
     "superagent": "^6.1.0",
+    "torrent-stream": "^1.2.1",
     "unzipper": "^0.10.11",
+    "url": "^0.11.0",
     "util": "^0.12.3",
-    "video.js": "^7.11.4"
+    "video.js": "^7.11.4",
+    "xtend": "^4.0.2"
   }
 }

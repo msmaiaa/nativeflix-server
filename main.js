@@ -7,7 +7,7 @@ const exp = express();
 const server = require("http").createServer(exp);
 const io = require("socket.io").listen(server);
 const fs = require('fs-extra');
-const peerflix = require("peerflix");
+const peerflix = require("./vendor/peerflix");
 const chalk = require('chalk');
 const utils = require('./src/utils/utils');
 const subs = require('./src/subtitles/subtitles');
@@ -17,7 +17,6 @@ let g_activeMovieCode = null;
 let mainWindow = null;
 let g_engine = null;
 let g_dirName = null;
-let g_resolve_stream = null;
 
 //electron stuff
 function createWindow () {
@@ -96,7 +95,6 @@ io.on("connection", socket => {
                 io.sockets.emit('setWatching', {condition:false, activeCode: g_activeMovieCode});
                 g_activeMovieCode = null;
                 g_engine = null;
-                g_resolve_stream();
                 fs.emptyDir(g_dirName);
             });
         }
@@ -126,78 +124,57 @@ function startEngine(uri) {
     });
 }
 
+
 //opens the player on the electron frontend
-function openPlayer(data) {
-    return new Promise((resolve, reject) => {
+openPlayer = async(data)=>{
+    try{
         g_dirName = process.env.torrentsPath + '/' + g_engine.torrent.name + '/';
 
-        subs.getSubtitles(data, g_dirName)
-        .then((status)=>{
-                if(status != 200){
-                    console.log(chalk.red('Starting without subtitles'));
-                }
-                console.log('sub')
-                //stream url address
-                let localHref = `http://localhost:${g_engine.server.address().port}/`;
+        const status = await subs.getSubtitles(data, g_dirName);
 
-                const subtitleDirectory = `${g_dirName}`.replace(/\//g, "\\");
+        if(status != 200){
+            console.log(chalk.red('Starting without subtitles'));
+        }
 
-                //opening player on electron frontend
-                let {width, height} = screen.getPrimaryDisplay().size
-                let downPercent = 0;
-                let pieces = 0;
+        //stream url address
+        let localHref = `http://localhost:${g_engine.server.address().port}/`;
 
-                //saving the total pieces downloaded to check the download percentage
-                const changePiece = (i) =>{
-                    pieces = i;
-                }
-                g_engine.on('verify', changePiece);
-                console.log(localHref);
+        //const subtitleDirectory = `${g_dirName}`.replace(/\//g, "\\");
 
-                //checks until the torrent has downloaded at least 5%
-                let interval = setInterval(()=>{
-                    downPercent = Math.round(((pieces + 1) / g_engine.torrent.pieces.length) * 100.0)
-                    if (downPercent > 5){
-                        clearInterval(interval);
+        //opening player on electron frontend
+        let {width, height} = screen.getPrimaryDisplay().size
+        let downPercent = 0;
+        let pieces = 0;
 
-                        //send watching status to mobile app to show the buttons
-                        io.sockets.emit('setWatching', {condition: true, activeCode: g_activeMovieCode});
+        //saving the total pieces downloaded to check the download percentage
+        const changePiece = (i) =>{
+            pieces = i;
+        }
+        g_engine.on('verify', changePiece);
+        console.log(`Started streaming at ${localHref}`);
 
-                        //streaming crashes if i remove the verify listener
-                        //g_engine.removeListener('verify', changePiece)
-                        mainWindow.webContents.send('startPlayer', {url: localHref, subDir: g_dirName, size: {width: width, height: height}});
-                        
-                        //need to assign resolve to a global variable, so we can stop the download from within the socket messages
-                        g_resolve_stream = resolve;
-                    }
-                },500)   
+        //checks until the torrent has downloaded at least 5%
+        let interval = setInterval(()=>{
+            downPercent = Math.round(((pieces + 1) / g_engine.torrent.pieces.length) * 100.0)
+            if (downPercent > 1){
+                clearInterval(interval);
+
+                //send watching status to mobile app to show the buttons
+                io.sockets.emit('setWatching', {condition: true, activeCode: g_activeMovieCode});
+
+                //streaming crashes if i remove the verify listener
+                //g_engine.removeListener('verify', changePiece)
+                mainWindow.webContents.send('startPlayer', {url: localHref, subDir: g_dirName, size: {width: width, height: height}});
+                
+                //need to assign resolve to a global variable, so we can stop the download from within the socket messages
+                //g_resolve_stream = resolve;
             }
-        )
-    });
+        },500)   
+    }
+    catch(e){
+        console.error(e.message);
+    }
+
 }
 
-
-// setTimeout(()=>{
-//     let data = {
-//         value: {
-//           url: 'https://yts.mx/torrent/download/EA17E6BE92962A403AC1C638D2537DCF1E564D26',
-//           hash: 'EA17E6BE92962A403AC1C638D2537DCF1E564D26',
-//           quality: '720p',
-//           type: 'bluray',
-//           seeds: 595,
-//           peers: 126,
-//           size: '1.25 GB',
-//           size_bytes: 1342177280,
-//           date_uploaded: '2018-08-01 07:28:54',
-//           date_uploaded_unix: 1533101334
-//         },
-//         type: 'stream',
-//         title: 'Avengers: Infinity War',
-//         imdb_code: 'tt4154756'
-//     }
-//     let imdb_code = data.imdb_code;
-//     g_activeMovieCode = imdb_code;
-//     let magnet = utils.generateMagnet(data.value.hash)
-//     start(data, magnet);
-// },1000)
 server.listen(port,() => console.log("server running on port:" + port));

@@ -15,12 +15,13 @@ OpenSubtitles.api.LogIn(process.env.LOGIN, process.env.PASS, 'pt-br', 'Butter V1
     token = res.token;
 })
 
-const getSubtitles = function(data, directory){
-    return new Promise((resolve, reject)=>{
+const getSubtitles = async(data, directory)=>{
+    try{
         const imdb_code = data.imdb_code.replace('tt', '');
+        
         //fetching directly from the opensubtitles api
         return OpenSubtitles.api.SearchSubtitles(token,[{'imdbid': imdb_code, 'sublanguageid': process.env.subtitlesLanguage}])
-        .then((subtitles)=>{
+        .then(async (subtitles)=>{
             let goodSubtitles = [];
             let bestSubtitles = [];
             let status;
@@ -33,7 +34,7 @@ const getSubtitles = function(data, directory){
                 }else{
                     status = 400;
                 }
-                resolve(status)
+                return status;
             }else{
                 status = 200;
             }
@@ -58,9 +59,7 @@ const getSubtitles = function(data, directory){
             
             const subDownLink = bestSub.ZipDownloadLink;
     
-            //clearing the directory if it has old content
-            fs.emptyDirSync(directory);
-    
+            await createDir(directory)
             //download the subtitle zip to the directory
             request
             .get(subDownLink)
@@ -69,7 +68,6 @@ const getSubtitles = function(data, directory){
             })
             .pipe(fs.createWriteStream(directory + 'subtitle.zip'))
             .on('finish', function() {
-    
                 //unzipping the files to the directory
                 let zip = new admZip(directory + 'subtitle.zip');
                 zip.extractAllTo(directory,true);
@@ -87,20 +85,33 @@ const getSubtitles = function(data, directory){
                             .pipe(srt2vtt())
                             .pipe(fs.createWriteStream(`${directory}subtitle.vtt`))
                             .on('finish', ()=>{
-                                resolve(200)
+                                return 200;
                             })
                         } 
                     });
                 });
             });
             return status;
+            
         })
         .catch((e)=>{
             console.error('Error on the subtitles api (maybe offline?)')
-            resolve(400);
-            throw e;
+            return 400;
         })
-    })
+    }
+    catch(e){
+        console.error(e.message);
+        throw e;
+    }
 }
 
+createDir = async(dir) =>{
+    try{
+        await fs.ensureDir(dir)
+        return;
+    }
+    catch(e){
+        console.error(e)
+    }
+}
 exports.getSubtitles = getSubtitles;
