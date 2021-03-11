@@ -1,17 +1,13 @@
 # nativeflix-server
-
-:warning: Only works with nodejs 12.x versions or below due to some dependencies not being updated for a long time.  
 :warning: Currently works only on windows.  
-:warning: I'm not a very experienced programmer so the code may not be the best you've ever seen
 
-This is the back-end wrapper for the [nativeflix app](https://github.com/msmaiaa/nativeflix). It basically talks with the app through sockets, streams the magnet using [peerflix](https://github.com/mafintosh/peerflix) and manipulates the system giving the user partial control of the VLC application.  
+This is the back-end wrapper for the [nativeflix app](https://github.com/msmaiaa/nativeflix). It basically talks with the app through sockets, streams the magnet using [peerflix](https://github.com/mafintosh/peerflix) and its opened on a electron based video player, giving the user full control of the player without need to being on the computer.
 
 ## Features
 
-* Streams the magnet to VLC
 * Auto download the best subtitles based on the given language from the opensubtitles api
-* Clears the download cache after the VLC window is close
-* Listens for the app commands to control the window (set screen size, pause, close, etc)
+* Clears the download cache after the player is closed
+* Listens for the app commands to control the window (pause, close, etc)
 
 
 ## Preview
@@ -21,10 +17,8 @@ This is the back-end wrapper for the [nativeflix app](https://github.com/msmaiaa
 ## Installation
 
 Use the package manager [npm](https://www.npmjs.com/) to install the dependencies.  
-Windows build tools is needed to use the windows api to get window information etc.
 
 ```bash
-npm install --global windows-build-tools 
 npm install
 ```
 
@@ -42,7 +36,7 @@ subtitlesLanguage=<iso639-1 or iso639-2 code (use pob for pt-br)>
 
 To start the app:
 ```bash
-node app
+npm start
 ```
 
 ## Contributing
