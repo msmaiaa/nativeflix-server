@@ -1,23 +1,41 @@
 const videojs = require('video.js')
-const srt2vtt = require('srt-to-vtt')
+videojs.options.autoplay = true;
 let $ = null;
-const fs = require('fs');
-const { ipcRenderer } = require('electron')
+const { ipcRenderer} = require('electron');
 
 let g_player = null;
 
-subDir = 'G:/torrents/movies/Avengers Infinity War (2018) [BluRay] [720p] [YTS.AM]/'
-sub = `${subDir}subtitle.srt`
 
 window.addEventListener('DOMContentLoaded', () => {
     $ = require ('jquery');
     ipcRenderer.on('startPlayer', (event, arg)=>{
-        createPlayer(arg.url, arg.subDir);
+        createPlayer(arg.url, arg.subDir, arg.size);
+    })
+
+    ipcRenderer.on('closePlayer', (event, arg)=>{
+        if(g_player){
+            closePlayer();
+        }
+    })
+
+    ipcRenderer.on('changeScreen', (event, arg)=>{
+        if(g_player){
+            setPlayerScreen();
+        }
+    })
+
+    ipcRenderer.on('pausePlayer', (event, arg)=>{
+        if(g_player){
+            pausePlayer();
+        }
     })
 })
 
-createPlayer = (url, subDir) =>{
-    //TODO: append video to main
+createPlayer = (url, subDir, size) =>{
+    if ($('#player')){
+        $('#player').remove();
+        g_player = null;
+    }
     $('#title').hide();
     let videoHTML = `
     <video
@@ -25,51 +43,50 @@ createPlayer = (url, subDir) =>{
     class="video-js"
     controls
     preload="auto"
-    width="800"
-    height="600"
-    data-setup={}
+    width=${size.width}
+    height=${size.height}
     >
     <source src="${url}" type="video/mp4" />
     </video>
     `
-    //
-    $('main').append(videoHTML)
-    g_player = videojs('player')
-    convertSubtitle(subDir)
-    player.play()
-}
-
-closePlayer = () =>{
-
-}
-
-stopPlayer = () =>{
-
-}
-
-setPlayerScreen = () =>{
-    if (g_player.isFullScreen()){
-        g_player.requestFullscreen();
-    }else{
-        g_player.exitFullscreen();
-    }
+    $('main').append(videoHTML);
+    g_player = videojs('player',{
+        autoplay: true,
+        errorDisplay: false
+    });
+    g_player.ready(()=>{
+        let settings = g_player.textTrackSettings;
+        settings.setValues({
+            "backgroundColor": "#000",
+            "backgroundOpacity": "0",
+            "edgeStyle": "uniform",
+        });
+        settings.updateDisplay();
+        setSubtitle(subDir);
+        g_player.play()
+    })
     return
 }
 
-setSubtitle = (path) =>{
-    let track = g_player.addRemoteTextTrack({src: path})
-    track.addEventListener('load', function(){
-        console.log('loaded')
-        return
-    })
+closePlayer = () =>{
+    g_player.dispose();
+    $('#player').remove();
+    $("#title").show();
 }
 
-convertSubtitle = (subDir) =>{
-    fs.createReadStream(subDir + 'subtitle.srt')
-    .pipe(srt2vtt())
-    .pipe(fs.createWriteStream(`${subDir}subtitle.vtt`))
-    .on('finish', ()=>{
-        setSubtitle(subDir + subtitle.vtt)
+pausePlayer = () =>{
+    if (g_player.paused()){
+        g_player.play();
+    }else{
+        g_player.pause();
+    }
+}
+
+setSubtitle = (path) =>{
+    let fullPath = path + 'subtitle.vtt';
+    let track = g_player.addRemoteTextTrack({src: fullPath, default: true, label:'subtitle1'})
+    track.addEventListener('load', function(){
+        console.log('loaded')
         return
     })
 }
