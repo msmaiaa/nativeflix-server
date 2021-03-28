@@ -1,4 +1,5 @@
 const videojs = require('video.js')
+const fs = require('fs-extra');
 videojs.options.autoplay = true;
 let $ = null;
 const { ipcRenderer} = require('electron');
@@ -9,7 +10,7 @@ let g_player = null;
 window.addEventListener('DOMContentLoaded', () => {
     $ = require ('jquery');
     ipcRenderer.on('startPlayer', (event, arg)=>{
-        createPlayer(arg.url, arg.subDir, arg.size);
+        createPlayer(arg.url, arg.subDir, arg.size, arg.hasSubs);
     })
 
     ipcRenderer.on('closePlayer', (event, arg)=>{
@@ -31,7 +32,7 @@ window.addEventListener('DOMContentLoaded', () => {
     })
 })
 
-createPlayer = (url, subDir, size) =>{
+const createPlayer = async(url, subDir, size, hasSubs) =>{
     if ($('#player')){
         $('#player').remove();
         g_player = null;
@@ -54,7 +55,7 @@ createPlayer = (url, subDir, size) =>{
         autoplay: true,
         errorDisplay: false
     });
-    g_player.ready(()=>{
+    g_player.ready(async()=>{
         let settings = g_player.textTrackSettings;
         settings.setValues({
             "backgroundColor": "#000",
@@ -62,19 +63,20 @@ createPlayer = (url, subDir, size) =>{
             "edgeStyle": "uniform",
         });
         settings.updateDisplay();
-        setSubtitle(subDir);
+        if(hasSubs){
+            await setSubtitles(subDir);
+        }
         g_player.play()
     })
-    return
 }
 
-closePlayer = () =>{
+const closePlayer = () =>{
     g_player.dispose();
     $('#player').remove();
     $("#title").show();
 }
 
-pausePlayer = () =>{
+const pausePlayer = () =>{
     if (g_player.paused()){
         g_player.play();
     }else{
@@ -82,12 +84,27 @@ pausePlayer = () =>{
     }
 }
 
-setSubtitle = (path) =>{
-    let fullPath = path + 'subtitle.vtt';
-    let track = g_player.addRemoteTextTrack({src: fullPath, default: true, label:'subtitle1'})
-    track.addEventListener('load', function(){
-        console.log('loaded')
-        return
+setSubtitles = async (path) =>{
+    const files = await fs.readdir(path)
+    const promises = [];
+    console.log('setSubtitles');
+    for(f of files){
+        if (f.includes('.vtt')){
+            console.log(f)
+            promises.push(addSubtitle(path, f));
+        }
+    }
+    await Promise.all(promises);
+}
+
+addSubtitle = async (path, subName) =>{
+    return new Promise(resolve =>{
+        let fullPath = path + subName;
+        let track = g_player.addRemoteTextTrack({src: fullPath, default: true, label:subName})
+        track.addEventListener('load', function(){
+            console.log('loaded')
+            resolve()
+        })
     })
 }
 

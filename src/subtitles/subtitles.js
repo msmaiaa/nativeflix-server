@@ -15,86 +15,99 @@ OpenSubtitles.api.LogIn(process.env.LOGIN, process.env.PASS, 'pt-br', 'Butter V1
     token = res.token;
 })
 
+const renameSubs = async (dir) =>{
+    const directoryPath = path.join(dir);
+    return fs.readdir(directoryPath)
+    .then(async (files)=>{
+        let index = 1;
+        for await (const file of files){
+            if(file.includes(`.srt`)){
+                await fs.rename(dir + file, dir + `subtitle${index}.srt`);
+                await fs.createReadStream(`${dir}subtitle${index}.srt`)
+                .pipe(srt2vtt())
+                .pipe(fs.createWriteStream(`${dir}subtitle${index}.vtt`))
+                index += 1;
+            } 
+        }
+    })
+
+}
+
+const downSub = async(data, directory, index) =>{
+    const downUrl = data.ZipDownloadLink;
+    const subPath = `${directory}subtitle${index}.zip`
+    //download the subtitle zip to the directory
+    return new Promise(resolve => {
+        request
+        .get(downUrl)
+        .on('error', function(error) {
+            console.log(error);
+        })
+        .pipe(fs.createWriteStream(subPath))
+        .on('finish', async() =>{
+            //unzipping the files to the directory
+            let zip = new admZip(subPath);
+            zip.extractAllTo(directory,true);
+            resolve();
+        });
+    })
+}
+
+const deleteSubs = async(directory) =>{
+    const files = await fs.readdir(directory);
+    for await(let f of files){
+        if(f.includes('.srt') || f.includes('.vtt')){
+            await fs.remove(directory + f);
+        }
+    }
+    return;
+}
+
 const getSubtitles = async(data, directory)=>{
     try{
         const imdb_code = data.imdb_code.replace('tt', '');
+        let response = {}
         
         //fetching directly from the opensubtitles api
-        return OpenSubtitles.api.SearchSubtitles(token,[{'imdbid': imdb_code, 'sublanguageid': process.env.subtitlesLanguage}])
+        return OpenSubtitles.api.SearchSubtitles(token,[{'imdbid': imdb_code, 'sublanguageid': process.env.subtitlesLanguage, limit: '10'}])
         .then(async (subtitles)=>{
-            let goodSubtitles = [];
-            let bestSubtitles = [];
-            let status;
     
             //if server is offline or in maintenance
             if(!subtitles.data){
                 if(subtitles.status == '401 Unauthorized'){
                     console.log(chalk.red('Unauthorized status from the api, maybe the credentials are wrong.'));
-                    status = 401;
+                    response.status = 401;
                 }else{
-                    status = 400;
+                    response.status = 400;
                 }
-                return status;
+                return response
             }else{
-                status = 200;
+                response.status = 200;
             }
-    
-            //checks for the best subtitle based on the yifi api
-            for(s of subtitles.data){
-                if(s.SubFileName.includes(data.value.quality)){
-                    if(s.SubFileName.includes('YTS') || s.SubFileName.includes('YIFI') || s.SubFileName.includes('yts')){
-                        bestSubtitles.push(s);
-                    }else{
-                        goodSubtitles.push(s);
-                    }
-                }
-            }
-            
-            let bestSub = null;
-            if(bestSubtitles.length > 1){
-                bestSub = bestSubtitles[0]
-            }else{
-                bestSub = goodSubtitles[0];
-            }
-            
-            const subDownLink = bestSub.ZipDownloadLink;
-    
+
             await createDir(directory)
-            //download the subtitle zip to the directory
-            request
-            .get(subDownLink)
-            .on('error', function(error) {
-                console.log(error);
-            })
-            .pipe(fs.createWriteStream(directory + 'subtitle.zip'))
-            .on('finish', function() {
-                //unzipping the files to the directory
-                let zip = new admZip(directory + 'subtitle.zip');
-                zip.extractAllTo(directory,true);
-    
-                //reads all the files on the directory and changes the subtitle to subtitle.srt
-                const directoryPath = path.join(directory);
-                fs.readdir(directoryPath, function (err, files) {
-                    if (err) {
-                        return console.log('Unable to scan directory: ' + err);
-                    } 
-                    return files.forEach(function (file) {
-                        if(file.includes('srt')){
-                            fs.renameSync(directory + file, directory + 'subtitle.srt');
-                            fs.createReadStream(`${directory}subtitle.srt`)
-                            .pipe(srt2vtt())
-                            .pipe(fs.createWriteStream(`${directory}subtitle.vtt`))
-                            .on('finish', ()=>{
-                                return 200;
-                            })
-                        } 
-                    });
-                });
-            });
-            return status;
+            const promises = [];
+            await deleteSubs(directory)
+
+            for(let i = 0; i < 10; i++){
+                if(subtitles.data[i]){
+                    promises.push(downSub(subtitles.data[i], directory, i + 1))
+                }
+            }
+
+            const subs = await Promise.all(promises);
+            if(subs.length > 0){
+                await renameSubs(directory);
+                response.subs = subs.length;
+            }else{
+                response.subs = 0;
+            }
+
+            return response;
             
         })
         .catch((e)=>{
+            console.log(e);
             console.error('Error on the subtitles api (maybe offline?)')
             return 400;
         })

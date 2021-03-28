@@ -1,7 +1,7 @@
 const {app, BrowserWindow, ipcMain, screen } = require('electron')
 const path = require('path')
 require('dotenv').config()
-require('electron-reloader')(module)
+//require('electron-reloader')(module)
 const express = require("express");
 const exp = express();
 const server = require("http").createServer(exp);
@@ -10,7 +10,7 @@ const fs = require('fs-extra');
 const peerflix = require("./vendor/peerflix");
 const chalk = require('chalk');
 const utils = require('./src/utils/utils');
-const subs = require('./src/subtitles/subtitles');
+const subsApi = require('./src/subtitles/subtitles');
 const port = process.env.PORT;
 
 let g_activeMovieCode = null;
@@ -58,16 +58,12 @@ io.on("connection", socket => {
 
     //receives the movie data from the mobile app
     socket.on('app_startStream', (data)=>{
-        const magnet = utils.generateMagnet(data.value.hash);
+        const magnet = data.value.url
         g_activeMovieCode = data.imdb_code;
 
+        //console.log(data);
         start(data, magnet);
     })
-
-    //todo
-    // socket.on('app_startDownload', (data)=>{
-    //     const magnet = utils.generateMagnet(data.value.hash);
-    // })
 
     //mobile app requesting status when the component is mounted
     socket.on('app_getStatus',()=>{
@@ -130,16 +126,15 @@ openPlayer = async(data)=>{
     try{
         g_dirName = process.env.torrentsPath + '/' + g_engine.torrent.name + '/';
 
-        const status = await subs.getSubtitles(data, g_dirName);
-
-        if(status != 200){
+        const {status, subs} = await subsApi.getSubtitles(data, g_dirName);
+        let hasSubs = true;
+        if(status != 200 || subs < 1){
             console.log(chalk.red('Starting without subtitles'));
+            hasSubs = false;
         }
 
         //stream url address
         let localHref = `http://localhost:${g_engine.server.address().port}/`;
-
-        //const subtitleDirectory = `${g_dirName}`.replace(/\//g, "\\");
 
         //opening player on electron frontend
         let {width, height} = screen.getPrimaryDisplay().size
@@ -151,7 +146,6 @@ openPlayer = async(data)=>{
             pieces = i;
         }
         g_engine.on('verify', changePiece);
-        console.log(`Started streaming at ${localHref}`);
 
         //checks until the torrent has downloaded at least 5%
         let interval = setInterval(()=>{
@@ -164,10 +158,7 @@ openPlayer = async(data)=>{
 
                 //streaming crashes if i remove the verify listener
                 //g_engine.removeListener('verify', changePiece)
-                mainWindow.webContents.send('startPlayer', {url: localHref, subDir: g_dirName, size: {width: width, height: height}});
-                
-                //need to assign resolve to a global variable, so we can stop the download from within the socket messages
-                //g_resolve_stream = resolve;
+                mainWindow.webContents.send('startPlayer', {url: localHref, subDir: g_dirName, size: {width: width, height: height}, hasSubs});
             }
         },500)   
     }
