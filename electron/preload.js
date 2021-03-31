@@ -9,23 +9,17 @@ let g_player = null;
 
 window.addEventListener('DOMContentLoaded', () => {
     $ = require ('jquery');
-    ipcRenderer.on('startPlayer', (event, arg)=>{
+    ipcRenderer.on('PLAYER_START', (event, arg)=>{
         createPlayer(arg.url, arg.subDir, arg.size, arg.hasSubs);
     })
 
-    ipcRenderer.on('closePlayer', (event, arg)=>{
+    ipcRenderer.on('PLAYER_CLOSE', (event, arg)=>{
         if(g_player){
             closePlayer();
         }
     })
 
-    ipcRenderer.on('changeScreen', (event, arg)=>{
-        if(g_player){
-            setPlayerScreen();
-        }
-    })
-
-    ipcRenderer.on('pausePlayer', (event, arg)=>{
+    ipcRenderer.on('PLAYER_PAUSE', (event, arg)=>{
         if(g_player){
             pausePlayer();
         }
@@ -87,7 +81,6 @@ const pausePlayer = () =>{
 setSubtitles = async (path) =>{
     const files = await fs.readdir(path)
     const promises = [];
-    console.log('setSubtitles');
     for(f of files){
         if (f.includes('.vtt')){
             console.log(f)

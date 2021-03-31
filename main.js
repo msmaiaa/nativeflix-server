@@ -1,4 +1,4 @@
-const {app, BrowserWindow, ipcMain, screen } = require('electron')
+const {app, BrowserWindow, screen } = require('electron')
 const path = require('path')
 require('dotenv').config()
 //require('electron-reloader')(module)
@@ -8,8 +8,6 @@ const server = require("http").createServer(exp);
 const io = require("socket.io").listen(server);
 const fs = require('fs-extra');
 const peerflix = require("./vendor/peerflix");
-const chalk = require('chalk');
-const utils = require('./src/utils/utils');
 const subsApi = require('./src/subtitles/subtitles');
 const port = process.env.PORT;
 
@@ -54,10 +52,10 @@ app.on('window-all-closed', function () {
   
 
 io.on("connection", socket => {
-    console.log(chalk.yellow("App connected"));
+    console.log("App connected");
 
     //receives the movie data from the mobile app
-    socket.on('app_startStream', (data)=>{
+    socket.on('APP_START_STREAM', (data)=>{
         const magnet = data.value.url
         g_activeMovieCode = data.imdb_code;
 
@@ -66,29 +64,24 @@ io.on("connection", socket => {
     })
 
     //mobile app requesting status when the component is mounted
-    socket.on('app_getStatus',()=>{
+    socket.on('APP_GET_STATUS',()=>{
         if (g_engine != null && g_activeMovieCode != null){
-            io.sockets.emit('setWatching',{condition:true, activeCode:g_activeMovieCode});
+            io.sockets.emit('SET_WATCHING',{condition:true, activeCode:g_activeMovieCode});
         }else{
-            io.sockets.emit('setWatching',{condition:false, activeCode:null});
+            io.sockets.emit('SET_WATCHING',{condition:false});
         }
     })
 
-    //received when the mobile app press the button to set the screen mode
-    socket.on('app_changeScreen', ()=>{
-        mainWindow.webContents.send('changeScreen');
-    })
-
-    socket.on('app_pauseScreen', ()=>{
-        mainWindow.webContents.send('pausePlayer');
+    socket.on('APP_PAUSE_PLAYER', ()=>{
+        mainWindow.webContents.send('PLAYER_PAUSE');
     })
 
     //received when the mobile app press the button to close the player
-    socket.on('app_closeProcess', ()=>{
+    socket.on('APP_CLOSE_PROCESS', ()=>{
         if (g_engine){
-            mainWindow.webContents.send('closePlayer');
+            mainWindow.webContents.send('PLAYER_CLOSE');
             g_engine.destroy(()=>{
-                io.sockets.emit('setWatching', {condition:false, activeCode: g_activeMovieCode});
+                io.sockets.emit('SET_WATCHING', {condition:false});
                 g_activeMovieCode = null;
                 g_engine = null;
                 fs.emptyDir(g_dirName);
@@ -102,7 +95,7 @@ async function start(data, uri) {
     if (!uri) {
       throw new Error("Uri is required");
     }
-    console.log(chalk.cyan(`Starting ${data.title}`));
+    console.log(`Starting ${data.title}`);
   
     g_engine = await startEngine(uri);
     await openPlayer(data);
@@ -154,11 +147,11 @@ openPlayer = async(data)=>{
                 clearInterval(interval);
 
                 //send watching status to mobile app to show the buttons
-                io.sockets.emit('setWatching', {condition: true, activeCode: g_activeMovieCode});
+                io.sockets.emit('SET_WATCHING', {condition: true, activeCode: g_activeMovieCode});
 
                 //streaming crashes if i remove the verify listener
                 //g_engine.removeListener('verify', changePiece)
-                mainWindow.webContents.send('startPlayer', {url: localHref, subDir: g_dirName, size: {width: width, height: height}, hasSubs});
+                mainWindow.webContents.send('PLAYER_START', {url: localHref, subDir: g_dirName, size: {width: width, height: height}, hasSubs});
             }
         },500)   
     }
