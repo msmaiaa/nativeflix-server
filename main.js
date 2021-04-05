@@ -1,4 +1,4 @@
-const {app, BrowserWindow, screen } = require('electron')
+const {app, BrowserWindow, screen, ipcMain  } = require('electron')
 const path = require('path')
 require('dotenv').config()
 //require('electron-reloader')(module)
@@ -11,7 +11,7 @@ const peerflix = require("./vendor/peerflix");
 const subsApi = require('./src/subtitles/subtitles');
 const port = process.env.PORT;
 
-let g_activeMovieCode = null;
+let g_activeMedia = null;
 let mainWindow = null;
 let g_engine = null;
 let g_dirName = null;
@@ -48,6 +48,10 @@ app.on('window-all-closed', function () {
     if (process.platform !== 'darwin') app.quit()
 })
 
+ipcMain.on('RES_PLAYER_STATUS', (event, arg)=>{
+    io.sockets.emit('SET_PLAYER_PAUSED', {isPaused:arg.isPaused});
+})
+
 //
   
 
@@ -57,7 +61,7 @@ io.on("connection", socket => {
     //receives the movie data from the mobile app
     socket.on('APP_START_STREAM', (data)=>{
         const magnet = data.value.url
-        g_activeMovieCode = data.imdb_code;
+        g_activeMedia = data;
 
         //console.log(data);
         start(data, magnet);
@@ -65,15 +69,15 @@ io.on("connection", socket => {
 
     //mobile app requesting status when the component is mounted
     socket.on('APP_GET_STATUS',()=>{
-        if (g_engine != null && g_activeMovieCode != null){
-            io.sockets.emit('SET_WATCHING',{condition:true, activeCode:g_activeMovieCode});
-        }else{
-            io.sockets.emit('SET_WATCHING',{condition:false});
-        }
+        updateAppStatus();
     })
 
     socket.on('APP_PAUSE_PLAYER', ()=>{
         mainWindow.webContents.send('PLAYER_PAUSE');
+    })
+
+    socket.on('APP_GET_PAUSED', ()=>{
+        mainWindow.webContents.send('PLAYER_STATUS');
     })
 
     //received when the mobile app press the button to close the player
@@ -81,14 +85,27 @@ io.on("connection", socket => {
         if (g_engine){
             mainWindow.webContents.send('PLAYER_CLOSE');
             g_engine.destroy(()=>{
-                io.sockets.emit('SET_WATCHING', {condition:false});
-                g_activeMovieCode = null;
+                g_activeMedia = null;
                 g_engine = null;
+                updateAppStatus()
                 fs.emptyDir(g_dirName);
             });
         }
     })  
 });
+
+const updateAppStatus = () =>{
+    if (g_engine != null && g_activeMedia != null){
+        const media = {
+            ...g_activeMedia.value,
+            title: g_activeMedia.title,
+            largeImage: g_activeMedia.largeImage,
+        }
+        io.sockets.emit('SET_STATUS_APP', {condition:true, media});
+    }else{
+        io.sockets.emit('SET_STATUS_APP',{condition:false});
+    }
+}
 
 //starts the torrent-stream engine and opens the vlc with the engine stream;
 async function start(data, uri) {
@@ -122,7 +139,7 @@ openPlayer = async(data)=>{
         const {status, subs} = await subsApi.getSubtitles(data, g_dirName);
         let hasSubs = true;
         if(status != 200 || subs < 1){
-            console.log(chalk.red('Starting without subtitles'));
+            console.log('Starting without subtitles');
             hasSubs = false;
         }
 
@@ -147,7 +164,7 @@ openPlayer = async(data)=>{
                 clearInterval(interval);
 
                 //send watching status to mobile app to show the buttons
-                io.sockets.emit('SET_WATCHING', {condition: true, activeCode: g_activeMovieCode});
+                io.sockets.emit('SET_STATUS_APP', {condition: true, activeMedia: g_activeMedia});
 
                 //streaming crashes if i remove the verify listener
                 //g_engine.removeListener('verify', changePiece)

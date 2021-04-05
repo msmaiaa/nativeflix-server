@@ -2,7 +2,7 @@ const videojs = require('video.js')
 const fs = require('fs-extra');
 videojs.options.autoplay = true;
 let $ = null;
-const { ipcRenderer} = require('electron');
+const { ipcRenderer } = require('electron');
 
 let g_player = null;
 
@@ -19,12 +19,22 @@ window.addEventListener('DOMContentLoaded', () => {
         }
     })
 
+    ipcRenderer.on('PLAYER_STATUS', (event, arg)=>{
+        if(g_player){
+            ipcRenderer.send('RES_PLAYER_STATUS', {isPaused:checkPlayerPaused()});
+        }
+    })
+
     ipcRenderer.on('PLAYER_PAUSE', (event, arg)=>{
         if(g_player){
             pausePlayer();
         }
     })
 })
+
+const checkPlayerPaused = () => {
+    return g_player.paused();
+}
 
 const createPlayer = async(url, subDir, size, hasSubs) =>{
     if ($('#player')){
@@ -76,6 +86,7 @@ const pausePlayer = () =>{
     }else{
         g_player.pause();
     }
+    ipcRenderer.send('RES_PLAYER_STATUS', {isPaused:checkPlayerPaused()});
 }
 
 setSubtitles = async (path) =>{
@@ -83,7 +94,6 @@ setSubtitles = async (path) =>{
     const promises = [];
     for(f of files){
         if (f.includes('.vtt')){
-            console.log(f)
             promises.push(addSubtitle(path, f));
         }
     }
@@ -95,10 +105,7 @@ addSubtitle = async (path, subName) =>{
         let fullPath = path + subName;
         let track = g_player.addRemoteTextTrack({src: fullPath, default: true, label:subName})
         track.addEventListener('load', function(){
-            console.log('loaded')
             resolve()
         })
     })
 }
-
-//G:/torrents/movies/Avengers Infinity War (2018) [BluRay] [720p] [YTS.AM]/subtitle.srt
